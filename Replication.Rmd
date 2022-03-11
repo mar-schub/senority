@@ -1,0 +1,577 @@
+---
+title: "It's Seniority, Not Señoritas!"
+author: "Maren Schubert"
+date: "June 16, 2021"
+output:
+  html_document: 
+    theme: spacelab
+    toc: yes
+    toc_float: yes
+    smooth_scroll: yes
+    fig_width: 10
+    fig_height: 6
+    fig_caption: yes
+  pdf_document:
+editor_options: 
+  markdown: 
+    wrap: 80
+---
+
+```{=html}
+<style>
+body {
+text-align: justify}
+</style>
+```
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(
+  echo = TRUE, # show results 
+  collapse = TRUE, # not interrupt chunks 
+  warning = FALSE, # suppress warning 
+  message = FALSE, # suppress messages  
+  tidy = 'styler', # style according to tidyverse guide
+  cache = TRUE # cache the chunk outputs 
+)
+
+# packages needed 
+p_needed <-
+  c(
+    "tidyverse", # for everything 
+    "here", # for loading files 
+    "broom", # for tidy model output 
+    "skimr",
+    "performance",
+    "gridExtra",
+    "modelsummary", # for model tables 
+    "flextable", # for model tables 
+    "MASS", # for mvrnorm
+    "magrittr", # for pipes 
+    "showtext", # for fonts 
+    "checkdown", # for quizzes
+    "viridis", # for colors
+    "janitor", # for clean column names 
+    "patchwork", # for ggplots side-by-side
+    "haven", # for dta files 
+    "latex2exp", # for math in graphs labels 
+    "formatR", # for code formatting 
+    "equatiomatic", # for model equations
+    "separationplot", # for separation plots
+    "lmtest", # for likelihood ratio test
+    "tidymodels", # for nice ROC curves 
+    "stargazer", # for model tables 
+    "ggmosaic", # for mosaic plots
+    "ggthemes", #for nice themes
+    "mapproj", # for maps 
+    "mfx", # for AME
+    "maps", # for simple maps 
+    "rgdal", # for shapefiles 
+    "Zelig",
+    "devtools",
+    "hrbrthemes"
+  ) 
+
+devtools::install_github("IQSS/ZeligChoice")
+library(ZeligChoice)
+
+# check if packages are installed and if not, install them 
+lapply(p_needed[!(p_needed %in% rownames(installed.packages()))], install.packages)
+
+# prepare packages for use with library 
+lapply(p_needed, library, character.only = TRUE) 
+
+theme_set(
+  theme_minimal() +
+    theme(
+      plot.title.position = "plot",
+      legend.title = element_blank(),
+      legend.position = "top"
+    )
+)
+
+get_stats <- function(x) {
+  if (is.double(x)){
+  c(q = quantile(x, probs = c(0.005, 0.025, 0.05, 0.5, 0.95, 0.975, 0.995)), 
+    mean = mean(x))}else{
+      print("Non-numeric Data Passed")
+    }
+}
+set.seed(12345)
+```
+
+**Many studies show a structural disadvantage of female legislators when it
+comes to sponsoring bills and participating in the legislative process. But what
+is the reason for the differences between men and women in parliament?**
+
+Indeed, there are empirical observations, that female members of parliaments
+sponsor significantly fewer bills than their male colleagues. A commonly cited
+argument for those differences is the gender discrimination women are exposed
+to. In short, other -- supposedly male - members of parliament may be
+restricting women's access to political resources, reduce their effectiveness
+and therefore cause fewer numbers of sponsored bills by women.
+
+A study by Yann P. Kerevel and Lonna Rae Atkeson published in 2013 now suggests
+that the reason of those smaller numbers of sponsored bills does not lie in the
+gender of members of parliament, but in the time they spent in the legislative
+institutions. Because in most parliaments there are many advantages for those
+legislators who were in office for a long time. Women have only been taking up
+public office in greater numbers relatively recently, and therefore had less
+time to form networks, gain experience and get access to important resources and
+posts in the process. This means, newer members of parliament -- who are very
+often female -- will sponsor fewer bills than more experienced legislators.
+
+This conclusion is drawn from the study with the title *Explaining the
+Marginalization of Women in Legislative Institutions*. It is about bill
+sponsoring processes in the Mexican Chamber of Deputies where there is no such
+thing as incumbency as its members cannot be re-elected. Therefore, -- following
+the authors of that study -- it is possible to examine exclusively the influence
+of gender discrimination on bill sponsorship because there cannot be advantages
+based on seniority.
+
+As in many other states by now, there is a mandatory gender quota and although
+some parties have tried to circumvent it, the proportion of women has increased
+in the legislative periods following the law from 2000.
+
+```{r data_preprocessing, include=FALSE}
+replication <- read_dta(here("data", "JOPgender_replication_minversion.dta"))
+
+bill_spon <- replication[c(1:42)]
+
+bill_spon <- bill_spon %>%
+  mutate(
+    year = case_when(dum2000 == 1 ~ 2000,
+                     dum2003 == 1 ~ 2003,
+                     dum2006 == 1 ~ 2006
+    )
+  )
+bill_spon <- bill_spon %>%
+  filter(bills_presenter_total != "NA")
+
+lt58 <- bill_spon %>%
+  filter(year == "2000")
+
+lt59 <- bill_spon %>%
+  filter(year == "2003")
+
+lt60 <- bill_spon %>%
+  filter(year == "2006")
+
+
+```
+
+```{r, include=TRUE, echo=FALSE, fig.height=3}
+cols <- c("0" = "#003056", "1" = "#df7e50")
+
+na.omit(bill_spon) %>% 
+  ggplot( 
+       aes(x=year, 
+           fill=factor(female))) + 
+ geom_bar(
+   position=position_dodge())+
+  labs(
+    title = "Number of Male and Female Legislators",
+    subtitle = "In the 58th, 59th and 60th Legislative Term of the Mexican Chamber of Deputies"
+  ) + 
+  scale_color_manual(
+    values = cols,
+    aesthetics = c("fill"),
+    labels = c("male", "female"),
+    name = ""
+  )  +
+  theme_fivethirtyeight() +
+  theme(
+    axis.text.x = element_blank(),
+    plot.subtitle = element_text(size=9),
+    plot.title = element_text(size=18),
+    legend.text = element_text(size=8)
+    ) + 
+  annotate(
+    "text",
+    label = "2000 - 2003",
+    color = "#424242",
+    family = "sans",
+    x = 2000,
+    y = -20,
+    size = 3
+  ) + 
+  annotate(
+    "text",
+    label = "2003 - 2006",
+    color = "#424242",
+    family = "sans",
+    x = 2003,
+    y = -20,
+    size = 3
+  ) + 
+  annotate(
+    "text",
+    label = "2006 - 2009",
+ color = "#424242",
+    family = "sans",
+    x = 2006,
+    y = -20,
+    size = 3
+  ) 
+  
+```
+
+```{r, include=FALSE}
+m1 <- glm.nb(bills_presenter_total ~ female + educ_level2 + p_diputadolocal + p_feddeputy+ p_senador + committee_chair + committee_secretary + party_leader + tier + prddummy + pandummy + pvemdummy + ptdummy + convdummy + minorparties_dum2 + wnom1_dist_chambermed + p_statepartyleader + p_natpartyleader, lt58 )
+
+tidy(m1)
+
+table_1 <- modelsummary(
+  m1,  # including all models
+  title = "Influence of Gender on Bill Sponsorhip in the Mexican Chamber of Deputies, 2000 (Replication)",
+  notes = "Note: tba",
+  output = "flextable",
+  stars = TRUE, # including stars to show significance-levels,
+  gof_omit = "IC|F|Log.", # excluding all matching gof statistics
+  align = c("lcc"), # left, center, center ODER????
+) %>% 
+  autofit()
+tidy(m1)
+
+table_1
+```
+
+```{r include=FALSE}
+m2 <- glm.nb(bills_presenter_total ~ female + educ_level2 + p_diputadolocal + p_feddeputy+ p_senador + committee_chair + committee_secretary + party_leader + tier + prddummy + pandummy + pvemdummy + ptdummy + convdummy + minorparties_dum2 + wnom1_dist_chambermed + p_statepartyleader + p_natpartyleader, lt59 )
+
+tidy(m2)
+table_2 <- modelsummary(
+  m2,  # including all models
+  title = "Influence of Gender on Bill Sponsorhip in the Mexican Chamber of Deputies, 2003 (Replication)",
+  notes = "Note: tba",
+  output = "flextable",
+  stars = TRUE, # including stars to show significance-levels,
+  gof_omit = "IC|F|Log.", # excluding all matching gof statistics
+  align = c("lcc"), # left, center, center ODER????
+) %>% 
+  autofit()
+tidy(m2)
+table_2
+```
+
+```{r, include=FALSE}
+m3 <- glm.nb(bills_presenter_total ~ female + educ_level2 + p_diputadolocal + p_feddeputy+ p_senador + committee_chair + committee_secretary + party_leader + tier + prddummy + pandummy + pvemdummy + ptdummy + convdummy + minorparties_dum2 + wnom1_dist_chambermed + p_statepartyleader + p_natpartyleader, lt60 )
+tidy(m3)
+table_3 <- modelsummary(
+  m3,  # including all models
+  title = "Influence of Gender on Bill Sponsorhip in the Mexican Chamber of Deputies, 2006 (Replication)",
+  notes = "Note: tba",
+  output = "flextable",
+  stars = TRUE, # including stars to show significance-levels,
+  gof_omit = "IC|F|Log.", # excluding all matching gof statistics
+  align = c("lcc"), # left, center, center ODER????
+) %>% 
+  autofit()
+
+table_3
+```
+
+```{r, include=FALSE, echo=FALSE}
+## It's just for me and a tidier overview :)
+models_sum <- list()
+# specify how we want to name the models:
+models_sum[["2000"]] <- m1
+models_sum[["2003"]] <- m2
+models_sum[["2006"]] <- m3
+
+# models_sum[["Model 3"]] <- m3 ### fehlt noch
+
+t_sum <- modelsummary(
+  models_sum,  # including all models
+  title = "Replication: Bill Sponsoring in Mexican Chamber of Deputies",
+  notes = "Note: Standard errors are parentheses. ∗p < .05; ∗∗p < .01; ∗∗∗p < .001",
+  output = "flextable", # defining the output we want
+    stars = TRUE, # including stars to show significance-levels,
+  gof_omit = "IC|F|Log.", # excluding all matching gof statistics
+  align = c("lcc"), # left, center, center
+) %>% 
+  autofit()
+
+t_sum
+```
+
+```{r, include=FALSE}
+sim_betas_00 <- mvrnorm(1000, coef(m1), vcov(m1))
+names(coef(m1))
+
+medians_00 <- m1$model %>% ## take data used to estimate model
+  as_tibble() %>% ## turn to tidy
+  summarize_all(median)
+```
+
+```{r include=FALSE}
+scen_m_00 <- cbind(1, # Intercept
+                   medians_00[2:length(medians_00)]
+)
+
+scen_f_00 <- scen_m_00 %>%
+  mutate(female = 1)
+
+lambda_m_00 <- sim_betas_00 %*% t(scen_m_00) %>% 
+  exp()
+
+lambda_f_00 <- sim_betas_00 %*% t(scen_f_00) %>% ## 
+  exp()
+
+evs_m_00 <- apply(lambda_m_00, c(1, 2), function(x) {
+  mean(rnegbin(1000, mu = x, theta = m1$theta)) #
+})
+
+evs_f_00 <- apply(lambda_f_00, c(1, 2), function(x) {
+  mean(rnegbin(1000, mu = x, theta = m1$theta)) #
+})
+```
+
+```{r, include=FALSE}
+evs_m_00 %<>% as_tibble()
+evs_f_00 %<>% as_tibble()
+```
+
+```{r, include=FALSE}
+stats_m_00 <- get_stats(evs_m_00$V1)
+stats_m_00 %<>% as_tibble
+
+stats_f_00 <- get_stats(evs_f_00$V1)
+stats_f_00 %<>% as_tibble
+```
+
+```{r include=FALSE}
+
+p_lt_58 <- ggplot() + 
+  geom_density(
+    data = evs_m_00,
+    mapping = aes(V1),
+    color = "white",
+    fill = "#003056",
+    alpha = 0.8
+  ) +
+  geom_density(
+    data = evs_f_00,
+    mapping = aes(V1),
+    color = "white",
+    fill = "#df7e50",
+    alpha = 0.8
+  ) + 
+  labs(
+   title = "58th Legislative Term"
+  ) + 
+  geom_vline(
+    aes(xintercept = 0.680975), lty = 2, color = "#003056"
+    ) + # i had to set the lines by hand because the get_CI function didn't work
+  geom_vline(
+    aes(xintercept = 1.234150), lty = 2, color = "#003056"
+    ) +
+  geom_vline(
+    aes(xintercept = 0.607975), lty = 2, color = "#df7e50"
+    ) +
+  geom_vline(
+    aes(xintercept = 1.321050), lty = 2, color = "#df7e50"
+    ) +
+  theme_fivethirtyeight() +
+  theme(
+    plot.title = element_text(size = "10")
+  ) 
+
+p_lt_58 
+```
+
+```{r, include=FALSE}
+sim_betas_03 <- mvrnorm(1000, coef(m2), vcov(m2))
+names(coef(m2))
+
+medians_03 <- m2$model %>% ## take data used to estimate model
+  as_tibble() %>% ## turn to tidy
+  summarize_all(median)
+```
+
+```{r, include=FALSE}
+scen_m_03 <- cbind(1, # Intercept
+                   medians_03[2:length(medians_03)]
+)
+
+scen_f_03 <- scen_m_03 %>%
+  mutate(female = 1)
+
+lambda_m_03 <- sim_betas_03 %*% t(scen_m_03) %>% 
+  exp()
+
+lambda_f_03 <- sim_betas_03 %*% t(scen_f_03) %>% ## 
+  exp()
+
+evs_m_03 <- apply(lambda_m_03, c(1, 2), function(x) {
+  mean(rnegbin(1000, mu = x, theta = m2$theta)) #
+})
+
+evs_f_03 <- apply(lambda_f_03, c(1, 2), function(x) {
+  mean(rnegbin(1000, mu = x, theta = m2$theta)) #
+})
+```
+
+```{r, include=FALSE}
+evs_m_03 %<>% as_tibble()
+evs_f_03 %<>% as_tibble()
+```
+
+```{r, include=FALSE}
+stats_m_03 <- get_stats(evs_m_03$V1)
+stats_m_03 %<>% as_tibble
+
+stats_f_03 <- get_stats(evs_f_03$V1)
+stats_f_03 %<>% as_tibble
+```
+
+```{r, include=FALSE}
+p_lt_59 <- ggplot() + 
+  geom_density(
+    data = evs_m_03,
+    mapping = aes(V1),
+    color = "white",
+    fill = "#003056",
+    alpha = 0.8
+  ) +
+  geom_density(
+    data = evs_f_03,
+    mapping = aes(V1),
+    color = "white",
+    fill = "#df7e50",
+    alpha = 0.8
+  ) + 
+  labs(
+    title= "59th Legislative Term"
+  ) + geom_vline(
+    aes(xintercept =2.459975), lty = 2, color = "#003056"
+    ) +
+  geom_vline(
+    aes(xintercept = 4.083025), lty = 2, color = "#003056"
+    ) +
+  geom_vline(
+    aes(xintercept = 2.653900), lty = 2, color = "#df7e50"
+    ) +
+  geom_vline(
+    aes(xintercept = 5.014425), lty = 2, color = "#df7e50"
+    ) +
+  theme_fivethirtyeight() +
+  theme(
+    plot.title = element_text(size = "10")
+  )
+p_lt_59
+```
+
+```{r, include=FALSE}
+sim_betas_06 <- mvrnorm(1000, coef(m3), vcov(m3))
+names(coef(m3))
+
+medians_06 <- m3$model %>% ## take data used to estimate model
+  as_tibble() %>% ## turn to tidy
+  summarize_all(median)
+```
+
+```{r, include=FALSE}
+scen_m_06 <- cbind(1, # Intercept
+                   medians_06[2:length(medians_06)]
+)
+
+scen_f_06 <- scen_m_06 %>%
+  mutate(female = 1)
+
+lambda_m_06 <- sim_betas_06 %*% t(scen_m_06) %>% 
+  exp()
+
+lambda_f_06 <- sim_betas_06 %*% t(scen_f_06) %>% ## 
+  exp()
+
+evs_m_06 <- apply(lambda_m_06, c(1, 2), function(x) {
+  mean(rnegbin(1000, mu = x, theta = m3$theta)) #
+})
+
+evs_f_06 <- apply(lambda_f_06, c(1, 2), function(x) {
+  mean(rnegbin(1000, mu = x, theta = m3$theta)) #
+})
+```
+
+```{r, include=FALSE}
+evs_m_06 %<>% as_tibble()
+evs_f_06 %<>% as_tibble()
+```
+
+```{r, include=FALSE}
+stats_m_06 <- get_stats(evs_m_06$V1)
+stats_m_06 %<>% as_tibble
+
+stats_f_06 <- get_stats(evs_f_06$V1)
+stats_f_06 %<>% as_tibble
+```
+
+```{r, include=FALSE, echo=FALSE}
+p_lt_60 <- ggplot() + 
+  geom_density(
+    data = evs_m_06,
+    mapping = aes(V1),
+    color = "white",
+    fill = "#003056",
+    alpha = 0.8
+  ) +
+  geom_density(
+    data = evs_f_06,
+    mapping = aes(V1),
+    color = "white",
+    fill = "#df7e50",
+    alpha = 0.8
+  ) + 
+  labs(
+    title= "60th Legislative Term"
+  ) + geom_vline(
+    aes(xintercept = 6.533000), lty = 2, color = "#003056"
+    ) +
+  geom_vline(
+    aes(xintercept = 11.923775), lty = 2, color = "#003056"
+    ) +
+  geom_vline(
+    aes(xintercept = 6.538775), lty = 2, color = "#df7e50"
+    ) +
+  geom_vline(
+    aes(xintercept = 12.862525), lty = 2, color = "#df7e50"
+    ) +
+  theme_fivethirtyeight() +
+  theme(
+    plot.title = element_text(size = "10")
+  )
+p_lt_60
+```
+
+Apart from the distribution of female and male representatives, the numbers of
+bills sponsored by the members of those two groups are the values of interest.
+The plots below show the numbers of bills sponsored by an average male or female
+legislator in the three legislative terms considered. The mostly overlapping
+curves show that on average there is no significant difference between male and
+female members of the Mexican Chamber of Deputies.
+
+```{r include=TRUE, echo=FALSE, fig.height=3}
+p_bind <- p_lt_58 + p_lt_59 + p_lt_60
+
+p_bind + plot_annotation(
+  title = 'Number of Bills Sponsored \nin the Mexican Chamber of Deputies',
+  subtitle = 'By Average Female and Male Representatives', 
+  theme = theme_fivethirtyeight())
+```
+
+Interestingly, in the first legislative term analysed an average man or woman
+only sponsored one bill. In the 59th legislative term the representatives were
+more active: the average man sponsored 3 bills, ranging between 2.5 and 4 bills.
+At the same time the average woman even sponsored 3.7 bills, plus or minus 1.5
+bills. That shows, that in the first term after the effective mandatory gender
+quota was implemented, women sponsored slightly more bills, but still the
+difference is not significant. Lastly, in the 60th legislative term the curves
+are mainly overlapping. An average woman sponsored 9.5 bills, plus or minus 3,
+while an average man sponsored 9 bills, plus or minus 2.5. Like in the 59th
+term, one cannot speak of significant differences between men and women in terms
+of bill sponsorship.
+
+Based on their results the authors come to the conclusion that reasons for
+differences in bill sponsorship of female and male legislators in other studies
+can mainly be explained by seniority and not by the gender of the members of
+parliament.
