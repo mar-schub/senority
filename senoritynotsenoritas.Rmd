@@ -71,9 +71,6 @@ p_needed <-
     "hrbrthemes"
   ) 
 
-devtools::install_github("IQSS/ZeligChoice")
-library(ZeligChoice)
-
 # check if packages are installed and if not, install them 
 lapply(p_needed[!(p_needed %in% rownames(installed.packages()))], install.packages)
 
